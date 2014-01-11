@@ -64,6 +64,9 @@ def calculateMood(mode):
 			rgb.append(test)
 		hx = '#%02x%02x%02x' % (rgb[0], rgb[1], rgb[2])
 		colorDict[state] = hx
+
+	cursor.close()
+	cnx.close()
 	
 	if mode == "count":
 		return json.dumps(countDict)
