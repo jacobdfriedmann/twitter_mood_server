@@ -14,17 +14,18 @@ app = Flask(__name__)
 app.debug = True
 
 db = urlparse(os.environ['DATABASE_URL'])
-if db.port:
-	cnx = pymysql.connect(charset='utf8', host=db.hostname, port=db.port, user=db.username, passwd=db.password, db=db.path[1:])
-else:
-	cnx = pymysql.connect(charset='utf8', host=db.hostname, user=db.username, passwd=db.password, db=db.path[1:])
 
-cursor = cnx.cursor()
 mood_lag = 15
 sf = shapefile.Reader("states.shp")
 
 def calculateMood(mode):
 	global mood_lag
+	if db.port:
+		cnx = pymysql.connect(charset='utf8', host=db.hostname, port=db.port, user=db.username, passwd=db.password, db=db.path[1:])
+	else:
+		cnx = pymysql.connect(charset='utf8', host=db.hostname, user=db.username, passwd=db.password, db=db.path[1:])
+
+	cursor = cnx.cursor()
 	sentimentDict = dict()
 	countDict = dict()
 	colorDict = dict()
