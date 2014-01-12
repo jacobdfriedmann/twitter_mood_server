@@ -1,1 +1,1 @@
-web: gunicorn twitter_mood_client:app
+web: gunicorn twitter_mood_server:app
