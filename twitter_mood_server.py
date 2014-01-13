@@ -17,7 +17,7 @@ app.debug = True
 
 db = urlparse(os.environ['DATABASE_URL'])
 
-mood_lag = 15
+mood_lag = 30
 sf = shapefile.Reader("states.shp")
 
 def crossdomain(origin=None, methods=None, headers=None,
