@@ -74,6 +74,7 @@ def calculateMood(mode):
 	colorDict = dict()
 	avgDict = dict()
 	rs = "SELECT state, sentiment FROM tweets WHERE `date` > %s"
+	statistic = "SELECT AVG(avg), AVG(stddev) FROM statistics"
 	lag = datetime.datetime.now() - datetime.timedelta(minutes=mood_lag)
 	params = [lag.isoformat(' ')]
 	cursor.execute(rs, params)
@@ -87,15 +88,24 @@ def calculateMood(mode):
 			sentimentDict[state] += sentiment
 			countDict[state] += 1
 
+	avgStat = 0
+	stddevStat = 0
+	cursor.execute(statistic)
+	for avg, stddev in cursor:
+		avgStat = avg
+		stddevStat = stddev
+
 	for state, sen in sentimentDict.iteritems():
 		if countDict[state] != 0:
 			avg = sen/countDict[state]
 			avgDict[state] = avg
-			if avg > 0:
-				sign = 1
+			zscore = (avg - avgStat)/stddevStat
+			if zscore > 2:
+				hue = 120/360
+			elif zscore < -2:
+				hue = 0
 			else:
-				sign = -1
-			hue = (60 + 60*sign*pow(abs(avg), (1/2.3)))/360
+				hue = (60 + (30*zscore))/360
 		else:
 			hue = 60/360
 		orgb = colorsys.hsv_to_rgb(hue, 1, 1)
