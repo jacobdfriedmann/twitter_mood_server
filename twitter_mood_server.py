@@ -100,12 +100,12 @@ def calculateMood(mode):
 			avg = sen/countDict[state]
 			avgDict[state] = avg
 			zscore = (avg - avgStat)/stddevStat
-			if zscore > 1:
+			if zscore > .6:
 				hue = 120/360
-			elif zscore < -1:
+			elif zscore < -.6:
 				hue = 0
 			else:
-				hue = (60 + (60*zscore))/360
+				hue = (60 + (100*zscore))/360
 		else:
 			hue = 60/360
 		orgb = colorsys.hsv_to_rgb(hue, 1, 1)
