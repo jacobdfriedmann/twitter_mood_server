@@ -61,7 +61,18 @@ def crossdomain(origin=None, methods=None, headers=None,
         return update_wrapper(wrapped_function, f)
     return decorator
 
-def calculateMood(mode):
+def hue2hex(hue):
+	orgb = colorsys.hsv_to_rgb(hue, 1, 1)
+	rgb = []
+	for c in orgb:
+		test = int(c * 256)
+		if test == 256:
+			test = test - 1
+		rgb.append(test)
+	hx = '#%02x%02x%02x' % (rgb[0], rgb[1], rgb[2])
+	return hx
+
+def calculateMood():
 	global mood_lag
 	if db.port:
 		cnx = pymysql.connect(charset='utf8', host=db.hostname, port=db.port, user=db.username, passwd=db.password, db=db.path[1:])
@@ -69,69 +80,52 @@ def calculateMood(mode):
 		cnx = pymysql.connect(charset='utf8', host=db.hostname, user=db.username, passwd=db.password, db=db.path[1:])
 
 	cursor = cnx.cursor()
-	sentimentDict = dict()
-	countDict = dict()
-	colorDict = dict()
-	avgDict = dict()
-	rs = "SELECT state, sentiment FROM tweets WHERE `date` > %s"
-	statistic = "SELECT AVG(avg), AVG(stddev) FROM statistics"
+	mood = dict()
+
+	rs = "SELECT state, AVG(sentiment), COUNT(sentiment) FROM tweets WHERE `date` > %s GROUP BY state"
 	lag = datetime.datetime.now() - datetime.timedelta(minutes=mood_lag)
 	params = [lag.isoformat(' ')]
 	cursor.execute(rs, params)
 	
 	for st in sf.shapeRecords():
-		sentimentDict[st.record[31]] = 0
-		countDict[st.record[31]] = 0
+		mood[st.record[31]]['sentiment'] = 0
 
-	for state, sentiment in cursor:
-		if state in sentimentDict:
-			sentimentDict[state] += sentiment
-			countDict[state] += 1
+	for state, sentiment, count in cursor:
+		if state in mood:
+			mood[state]['sentiment'] = sentiment
+			mood[state]['count'] = count
 
+	meanQuery = "SELECT AVG(avg) FROM statistics"
 	avgStat = 0
-	stddevStat = 0
 	cursor.execute(statistic)
-	for avg, stddev in cursor:
+	for avg in cursor:
 		avgStat = avg
-		stddevStat = stddev
 
-	for state, sen in sentimentDict.iteritems():
-		if countDict[state] != 0:
-			avg = sen/countDict[state]
-			avgDict[state] = avg
-			zscore = (avg - avgStat)/stddevStat
-			if zscore > .6:
-				hue = 120/360
-			elif zscore < -.6:
-				hue = 0
+	stddevQuery = "SELECT state, STDDEV(sentiment) FROM tweets GROUP BY state;"
+	cursor.execute(stddevQuery)
+	for state, std in cursor:
+		if state in mood:
+			mood[state]['std'] = std
+			if std != 0:
+				mood[state]['mood_score'] = (mood[state][sentiment] - avgStat)/std
+				if mood[state]['mood_score'] > .6:
+					hue = 120/360
+				elif mood[state]['mood_score'] < -.6:
+					hue = 0
+				else:
+					hue = (60 + (100*mood[state]['mood_score']))/360
 			else:
-				hue = (60 + (100*zscore))/360
-		else:
-			hue = 60/360
-		orgb = colorsys.hsv_to_rgb(hue, 1, 1)
-		rgb = []
-		for c in orgb:
-			test = int(c * 256)
-			if test == 256:
-				test = test - 1
-			rgb.append(test)
-		hx = '#%02x%02x%02x' % (rgb[0], rgb[1], rgb[2])
-		colorDict[state] = hx
+				mood[state]['mood_score'] = 0
+				hue = 60/360
+			mood[state]['color'] = hue2hex(hue)
 
 	cursor.close()
 	cnx.close()
 	
-	if mode == "count":
-		return json.dumps(countDict)
-
-	elif mode == "color":
-		return json.dumps(colorDict)
-
-	else:
-		return json.dumps(avgDict)
+	return json.dumps(mood)
 
 @app.route('/')
 @crossdomain(origin='*')
 def mood():
-	return calculateMood(mode="color")
+	return calculateMood()
 	
