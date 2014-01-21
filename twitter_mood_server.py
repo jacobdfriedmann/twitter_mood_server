@@ -1,6 +1,6 @@
 from __future__ import division
 from urlparse import urlparse
-from flask import Flask
+from flask import Flask, render_template
 from collections import Iterable
 from flask import make_response, request, current_app
 from functools import update_wrapper
@@ -88,7 +88,12 @@ def calculateMood():
 	cursor.execute(rs, params)
 	
 	for st in sf.shapeRecords():
+		mood[st.record[31]] = { }
+		mood[st.record[31]]['mood_score'] = 0
+		mood[st.record[31]]['color'] = hue2hex(60/360)
+		mood[st.record[31]]['count'] = 0
 		mood[st.record[31]]['sentiment'] = 0
+		mood[st.record[31]]['std'] = 0
 
 	for state, sentiment, count in cursor:
 		if state in mood:
@@ -96,10 +101,8 @@ def calculateMood():
 			mood[state]['count'] = count
 
 	meanQuery = "SELECT AVG(avg) FROM statistics"
-	avgStat = 0
-	cursor.execute(statistic)
-	for avg in cursor:
-		avgStat = avg
+	cursor.execute(meanQuery)
+	avgStat = cursor.fetchone()[0]
 
 	stddevQuery = "SELECT state, STDDEV(sentiment) FROM tweets GROUP BY state;"
 	cursor.execute(stddevQuery)
@@ -107,7 +110,8 @@ def calculateMood():
 		if state in mood:
 			mood[state]['std'] = std
 			if std != 0:
-				mood[state]['mood_score'] = (mood[state][sentiment] - avgStat)/std
+				print avgStat
+				mood[state]['mood_score'] = (mood[state]['sentiment'] - avgStat)/std
 				if mood[state]['mood_score'] > .6:
 					hue = 120/360
 				elif mood[state]['mood_score'] < -.6:
@@ -128,4 +132,9 @@ def calculateMood():
 @crossdomain(origin='*')
 def mood():
 	return calculateMood()
+
+@crossdomain(origin='*')
+@app.route('/example')
+def exampleMap():
+	return render_template('twittermap.html')
 	
