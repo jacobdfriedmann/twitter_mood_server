@@ -15,9 +15,21 @@
 	  	body {
 	  		margin: 0;
 	  	}
+	  	#time-updated {
+	  		position: absolute;
+			top: 0;
+			margin: auto;
+			z-index: 1;
+			width: 100%;
+			text-align: center;
+			color: white;
+			font-weight: 900;
+			font-size: 20px;
+	  	}
 	</style>
 </head>
 <body>
+  <div id="time-updated"></div>
   <div id="map-twitter-mood"></div>
   <style>
 	  	.map-legend ul {
@@ -144,6 +156,8 @@
 	    	jQuery.getJSON('/', function(d) {
 	  			moodData = d;
 	  			refreshMood();
+	  			var now = new Date();
+	  			jQuery('#time-updated').html("Updated: " + now);
 			});
 	    }
 
