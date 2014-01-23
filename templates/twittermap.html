@@ -22,15 +22,86 @@
 			z-index: 1;
 			width: 100%;
 			text-align: center;
-			color: white;
 			font-weight: 900;
 			font-size: 20px;
 	  	}
+	  	.count-icon {
+		    background:#83B8E8;
+		    text-align:center;
+		    vertical-align:middle;
+		    border:1px solid #000;
+		    border-radius:20px;
+		    line-height:40px;
+		}
+		.tweet-icon {
+		    background:#83B8E8;
+		    vertical-align:middle;
+		    border:1px solid #000;
+		    border-radius:10px;
+		}
+		#map-ui {
+		    position: absolute;
+		    top: 10px;
+		    right: 10px;
+		    z-index: 100;
+		}
+
+		#map-ui ul {
+		    list-style: none;
+		    margin: 0;
+		    padding: 0;
+		}
+
+		#map-ui a {
+		    font-size: 13px;
+		    background: #FFF;
+		    color: #3C4E5A;
+		    display: block;
+		    margin: 0;
+		    padding: 0;
+		    border: 1px solid #BBB;
+		    border-bottom-width: 0;
+		    min-width: 138px;
+		    padding: 10px;
+		    text-decoration: none;
+		}
+
+		#map-ui a:hover {
+		    background: #ECF5FA;
+		}
+
+		#map-ui li:last-child a {
+		    border-bottom-width: 1px;
+		    -webkit-border-radius: 0 0 3px 3px;
+		    border-radius: 0 0 3px 3px;
+		}
+
+		#map-ui li:first-child a {
+		    -webkit-border-radius: 3px 3px 0 0;
+		    border-radius: 3px 3px 0 0;
+		}
+
+		#map-ui a.active {
+		    background: #3887BE;
+		    border-color: #3887BE;
+		    border-top-color: #FFF;
+		    color: #FFF;
+		}
+
+		#map-ui li:first-child a.active {
+		    border-top-color: #3887BE;
+		}
 	</style>
 </head>
 <body>
   <div id="time-updated"></div>
-  <div id="map-twitter-mood"></div>
+  <div id="map-twitter-mood">
+  	<div id='map-ui'>
+        <ul>
+            <li><a href='#' id='show-tweets' >Show Tweets</a></li>
+        </ul>
+    </div>
+  </div>
   <style>
 	  	.map-legend ul {
 	  		padding-left: 0;
@@ -52,36 +123,109 @@
 		}
 	</style>
   	<script>
-  		var maptwittermood = L.mapbox.map('map-twitter-mood', 'jdf3ha.h2gdddi3')
+  		var maptwittermood = L.mapbox.map('map-twitter-mood', 'jdf3ha.twittermood')
 			      .setView([37.8, -96], 4);
-
+		
+		// Globals
+		var activated = false;
+		var zoomLevel = 4;
+		var tweetsShowing = false;
 		var stateData = null;
 		var moodData = null;
-
+		var tweetData = null;
+		var countMarkers = Array();
+		var tweetMarkers = null;
 		var statesLayer = null;
+		var closeTooltip;
 
 		var popup = new L.Popup({ autoPan: false });
 
+
+		// Activate tweet markers
+		maptwittermood.getContainer().querySelector('#show-tweets').onclick = function() {
+		    if (this.className === 'active') {
+		    	if (maptwittermood._zoom < 6) {
+			        for(c in countMarkers) {
+			        	maptwittermood.removeLayer(countMarkers[c]);
+			        }
+			    }
+			    else {
+			    	for (t in tweetMarkers){
+			    		maptwittermood.removeLayer(tweetMarkers[t]);
+			    	}
+			    }
+		        this.className = '';
+		        tweetsShowing = false;
+		    } else {
+		    	if (maptwittermood._zoom < 6) {
+		    		for(c in countMarkers) {
+			        	countMarkers[c].addTo(maptwittermood);
+			        }
+			        refreshIcons();
+		    	}
+		        else {
+		        	for(t in tweetMarkers) {
+			        	tweetMarkers[t].addTo(maptwittermood);
+			        }
+		        }
+		        this.className = 'active';
+		        tweetsShowing = true;
+		    }
+		    return false;
+		};
+
+		// Initialize state overlays
 		function setGeoJson() {
 			statesLayer = L.geoJson(statesData,  {
 		        onEachFeature: onEachFeature
-		    }).addTo(maptwittermood);
+		    });
 		}
 
+		// Change the color of State overlays based on new mood data
 		function refreshMood() {
 		    statesLayer.setStyle(getStyle);
 		}
 
+		// Function to switch between individual and state aggregated tweet markers when zoom level changes
+		maptwittermood.on('zoomend', function (e) {refreshZoom(e);});
+		function refreshZoom(e) {
+			console.log
+			if (e.target._zoom >= 6 && tweetsShowing == true && zoomLevel < 6) {
+				for(c in countMarkers) {
+		        	maptwittermood.removeLayer(countMarkers[c]);
+		        }
+		        for(t in tweetMarkers) {
+		        	tweetMarkers[t].addTo(maptwittermood);
+		        }
+		        zoomLevel = e.target._zoom;
+			}
+			else if (e.target._zoom < 6 && tweetsShowing == true && zoomLevel >= 6) {
+				for(c in countMarkers) {
+		        	countMarkers[c].addTo(maptwittermood);
+		        }
+		        for (t in tweetMarkers){
+		    		maptwittermood.removeLayer(tweetMarkers[t]);
+		    	}
+		        refreshIcons();
+		        zoomLevel = e.target._zoom;
+			}
+			else {
+				zoomLevel = e.target._zoom;
+			}
+		}
+
+		// Get state style
 		function getStyle(feature) {
 	        return {
 	            weight: 1,
-	            opacity: 0.1,
-	            color: 'black',
-	            fillOpacity: 0.3,
+	            opacity: 1,
+	            color: "#001a4f",
+	            fillOpacity: .9,
 	            fillColor: getColor(feature.properties.abbrev)
 	        };
 	    }
 
+	    // Get state color based on mood data
 	    function getColor(a) {
 	        if (a in moodData) {
 	        	return moodData[a]['color'];
@@ -89,6 +233,7 @@
 	        return "";
 	    }
 
+	    // Set listeners for mouse events on state overlays
 	    function onEachFeature(feature, layer) {
 	        layer.on({
 	            mousemove: mousemove,
@@ -97,47 +242,62 @@
 	        });
 	    }
 
-	    var closeTooltip;
-
+	    // Popup for state level data
 	    function mousemove(e) {
 	        var layer = e.target;
+	        var state;
+	        if ('feature' in layer) {
+	        	state = layer.feature.properties.abbrev;
+	        }
+	        else {
+	        	state = layer.options.title;
+	        }
 
-	        var moodscore = parseFloat(moodData[layer.feature.properties.abbrev]['mood_score']).toFixed(3);
-	        var sentiment = parseFloat(moodData[layer.feature.properties.abbrev]['sentiment']).toFixed(3);
-	        var count = moodData[layer.feature.properties.abbrev]['count'];
-	        var std = parseFloat(moodData[layer.feature.properties.abbrev]['std']).toFixed(3);
+	        var moodscore = parseFloat(moodData[state]['mood_score']).toFixed(3);
+	        var sentiment = parseFloat(moodData[state]['sentiment']).toFixed(3);
+	        var count = moodData[state]['count'];
+	        var std = parseFloat(moodData[state]['std']).toFixed(3);
+	        var name = moodData[state]['name'];
 
 	        popup.setLatLng(e.latlng);
-	        popup.setContent('<div class="marker-title">' + layer.feature.properties.name + '</div>' +
-	            '<b>Mood Score: </b> ' + moodscore + '<br/><b>Average Sentiment: </b>' + sentiment + '<br/><b>Number of Tweets: </b> ' + count + '</br><b>Standard Deviation:</b> ' + std);
+	        popup.setContent('<div class="marker-title">' + name + '</div>' +
+	            '<i>Mood Score: </i> ' + moodscore + '<br/><i>Average Sentiment: </i>' + sentiment + '<br/><i>Number of Tweets: </i> ' + count + '</br><i>Standard Deviation:</i> ' + std);
 
 	        if (!popup._map) popup.openOn(maptwittermood);
 	        window.clearTimeout(closeTooltip);
 
-	        // highlight feature
-	        layer.setStyle({
-	            weight: 3,
-	            opacity: 0.3,
-	            fillOpacity: 0.9
-	        });
 
-	        if (!L.Browser.ie && !L.Browser.opera) {
+	        if (!L.Browser.ie && !L.Browser.opera && 'feature' in layer) {
 	            layer.bringToFront();
 	        }
 	    }
 
-	    function mouseout(e) {
+	    // Popup for individual tweet
+	    function tweetMouseOver(e) {
 	        var layer = e.target;
-	        layer.setStyle({
-	            weight: 1,
-	            opacity: 0.1,
-	            fillOpacity: 0.3
-	        });
+	        var i = layer.options.title;
+
+	        popup.setLatLng(e.latlng);
+	        popup.setContent('<div class="marker-title">' + tweetData[i]['text'] + '</div>' +
+	            '<i>Sentiment: </i> ' + tweetData[i]['sentiment'] + '<br/><i>Date: </i>' + tweetData[i]['date']);
+
+	        if (!popup._map) popup.openOn(maptwittermood);
+	        window.clearTimeout(closeTooltip);
+
+
+	        if (!L.Browser.ie && !L.Browser.opera && 'feature' in layer) {
+	            layer.bringToFront();
+	        }
+	    }
+
+	    // Close open popup
+	    function mouseout(e) {
 	        closeTooltip = window.setTimeout(function() {
 	            maptwittermood.closePopup();
 	        }, 100);
 	    }
 
+	    // Zoom to state
 	    function zoomToFeature(e) {
 	        maptwittermood.fitBounds(e.target.getBounds());
 	    }
@@ -146,19 +306,84 @@
 
 	    function getLegendHTML() {
 	      	labels = [];
-	        labels.push('<li><span class="swatch" style="background:green"></span>Positive</li>');
-	        labels.push('<li><span class="swatch" style="background:yellow"></span>Nuetral</li>');
-	        labels.push('<li><span class="swatch" style="background:red"></span>Negative</li>');
+	        labels.push('<li><span class="swatch" style="background:#00ff00"></span>Positive</li>');
+	        labels.push('<li><span class="swatch" style="background:white"></span>Nuetral</li>');
+	        labels.push('<li><span class="swatch" style="background:#ff0000"></span>Negative</li>');
 	      	return '<span>Mood Legend</span><ul>' + labels.join('') + '</ul>';
 	    }
 
+	    // Get new data
 	    function updateMap() {
 	    	jQuery.getJSON('/', function(d) {
 	  			moodData = d;
 	  			refreshMood();
 	  			var now = new Date();
 	  			jQuery('#time-updated').html("Updated: " + now);
+	  			if (activated == false) {
+	    			statesLayer.addTo(maptwittermood)
+	    			setCountMarkers();
+	    			activated = true;
+	    		}
+	    		refreshIcons();
 			});
+			jQuery.getJSON('/tweets', function(d) {
+				tweetData = d;
+				setTweetMarkers();
+			})
+	    }
+
+	    // Refresh size of state level aggregate markers based on new data
+	    function refreshIcons() {
+	    	for (f in countMarkers) {
+	    		size = parseInt(moodData[f]['count']/5);
+	    		countMarkers[f].setIcon(getCountIcon(f, size));
+	    		jQuery(countMarkers[f]._icon).css('line-height', size + "px");
+	    		jQuery(countMarkers[f]._icon).css('border-radius', size + "px");
+	    		if (size < 30) {
+	    			jQuery(countMarkers[f]._icon).css('font-size', 10 + "px");
+	    		}
+	    		if (size < 20) {
+	    			jQuery(countMarkers[f]._icon).html('');
+	    		}
+	    	}
+	    }
+
+	    // Initialize state level count markers
+	    function setCountMarkers() {
+	    	for (f in moodData) {
+	    		countMarkers[f] = L.marker(moodData[f]['centroid'], {title: f});
+	    		countMarkers[f].on('mouseover', function (e) {mousemove(e);});
+	    		countMarkers[f].on('mouseout', function (e) {mouseout(e);});
+	    	}
+	    }
+
+	    // Initialize individual tweet markers
+	    function setTweetMarkers() {
+	    	if (tweetMarkers != null) {
+	    		for (t in tweetMarkers) {
+	    			maptwittermood.removeLayer(tweetMarkers[t]);
+	    		}
+	    	}
+	    	tweetMarkers = [];
+	    	for (t in tweetData) {
+	    		var marker = L.marker([tweetData[t]['lng'], tweetData[t]['lat']], {title: t, icon: getTweetIcon()});
+	    		marker.on('mouseover', function(e) {tweetMouseOver(e)});
+	    		marker.on('mouseout', function (e) {mouseout(e);});
+	    		if (tweetsShowing == true && zoomLevel >= 6) {
+	    			marker.addTo(maptwittermood);
+	    		}
+	    		tweetMarkers.push(marker);
+	    	}
+	    }
+
+	    // Get the divIcon for state based on number of tweets
+	    function getCountIcon(state, size) {
+	    	return L.divIcon({iconSize: [size, size], html: moodData[state]['count'], className: "count-icon"});
+	    }
+
+	    // Get the divIcon for a tweet
+	    function getTweetIcon() {
+	    	return L.divIcon({iconSize: [10, 10], className:"tweet-icon"});
 	    }
 
 	  	// Get state json info
@@ -168,7 +393,8 @@
 	  		updateMap();
 		});
 
-		setInterval(function() {updateMap();}, 10000)
+	  	// Refresh data every 20 seconds
+		setInterval(function() {updateMap();}, 20000)
 	
 	</script>
 </body>

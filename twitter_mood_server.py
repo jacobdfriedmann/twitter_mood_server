@@ -17,7 +17,7 @@ app.debug = True
 
 db = urlparse(os.environ['DATABASE_URL'])
 
-mood_lag = 15
+mood_lag = 10
 sf = shapefile.Reader("states.shp")
 
 def crossdomain(origin=None, methods=None, headers=None,
@@ -61,8 +61,9 @@ def crossdomain(origin=None, methods=None, headers=None,
         return update_wrapper(wrapped_function, f)
     return decorator
 
-def hue2hex(hue):
-	orgb = colorsys.hsv_to_rgb(hue, 1, 1)
+def hue2hex(hue, saturation):
+	if saturation > 1: saturation = 1
+	orgb = colorsys.hsv_to_rgb(hue, saturation, 1)
 	rgb = []
 	for c in orgb:
 		test = int(c * 256)
@@ -71,6 +72,35 @@ def hue2hex(hue):
 		rgb.append(test)
 	hx = '#%02x%02x%02x' % (rgb[0], rgb[1], rgb[2])
 	return hx
+
+def tweetData():
+	global mood_lag
+	if db.port:
+		cnx = pymysql.connect(charset='utf8', host=db.hostname, port=db.port, user=db.username, passwd=db.password, db=db.path[1:])
+	else:
+		cnx = pymysql.connect(charset='utf8', host=db.hostname, user=db.username, passwd=db.password, db=db.path[1:])
+
+	cursor = cnx.cursor()
+	tweets = []
+
+	rs = "SELECT text, sentiment, date, lat, lng FROM tweets WHERE `date` > %s ORDER BY `date` DESC LIMIT 1000"
+	lag = datetime.datetime.now() - datetime.timedelta(minutes=mood_lag)
+	params = [lag.isoformat(' ')]
+	cursor.execute(rs, params)
+
+	for t, s, d, lat, lng in cursor:
+		tweet = {}
+		tweet['text'] = t
+		tweet['sentiment'] = s
+		tweet['date'] = d.isoformat(' ')
+		tweet['lat'] = lat
+		tweet['lng'] = lng
+		tweets.append(tweet)
+
+	cursor.close()
+	cnx.close()
+	
+	return json.dumps(tweets)
 
 def calculateMood():
 	global mood_lag
@@ -86,14 +116,19 @@ def calculateMood():
 	lag = datetime.datetime.now() - datetime.timedelta(minutes=mood_lag)
 	params = [lag.isoformat(' ')]
 	cursor.execute(rs, params)
+
+	centroid_data = open('static/map.geojson')
+	centroids = json.load(centroid_data)
 	
 	for st in sf.shapeRecords():
 		mood[st.record[31]] = { }
 		mood[st.record[31]]['mood_score'] = 0
-		mood[st.record[31]]['color'] = hue2hex(60/360)
+		mood[st.record[31]]['color'] = hue2hex(0, 0)
 		mood[st.record[31]]['count'] = 0
 		mood[st.record[31]]['sentiment'] = 0
 		mood[st.record[31]]['std'] = 0
+		mood[st.record[31]]['centroid'] = centroids[st.record[31]]
+		mood[st.record[31]]['name'] = st.record[12]
 
 	for state, sentiment, count in cursor:
 		if state in mood:
@@ -112,16 +147,14 @@ def calculateMood():
 			if std != 0:
 				print avgStat
 				mood[state]['mood_score'] = (mood[state]['sentiment'] - avgStat)/std
-				if mood[state]['mood_score'] > .6:
+				if mood[state]['mood_score'] > 0:
 					hue = 120/360
-				elif mood[state]['mood_score'] < -.6:
-					hue = 0
 				else:
-					hue = (60 + (100*mood[state]['mood_score']))/360
+					hue = 0
 			else:
 				mood[state]['mood_score'] = 0
-				hue = 60/360
-			mood[state]['color'] = hue2hex(hue)
+				hue = 0
+			mood[state]['color'] = hue2hex(hue, abs(mood[state]['mood_score']))
 
 	cursor.close()
 	cnx.close()
@@ -134,7 +167,12 @@ def mood():
 	return calculateMood()
 
 @crossdomain(origin='*')
-@app.route('/example')
-def exampleMap():
+@app.route('/map')
+def map():
 	return render_template('twittermap.html')
+
+@app.route('/tweets')
+@crossdomain(origin='*')
+def tweets():
+	return tweetData()
 	
